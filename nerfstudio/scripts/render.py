@@ -166,6 +166,10 @@ def _render_trajectory_video(
                         media.write_image(
                             output_image_dir / f"{camera_idx:05d}.jpg", render_image, fmt="jpeg", quality=jpeg_quality
                         )
+                    if rendered_output_names[0] == "depth":
+                        # write function to save depth as torch tensor for later use
+                        depth = outputs["depth"].cpu()
+                        torch.save(depth, output_image_dir / f"{camera_idx:05d}_depth.png")
                 if output_format == "video":
                     if writer is None:
                         render_width = int(render_image.shape[1])
