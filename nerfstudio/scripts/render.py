@@ -62,6 +62,9 @@ from nerfstudio.utils.eval_utils import eval_setup
 from nerfstudio.utils.rich_utils import CONSOLE, ItersPerSecColumn
 from nerfstudio.utils.scripts import run_command
 
+# import custom depth_renderer
+# from nerfstudio.irp_addons.depth_renderer import DepthRender
+
 
 def _render_trajectory_video(
     pipeline: Pipeline,
@@ -166,10 +169,6 @@ def _render_trajectory_video(
                         media.write_image(
                             output_image_dir / f"{camera_idx:05d}.jpg", render_image, fmt="jpeg", quality=jpeg_quality
                         )
-                    if rendered_output_names[0] == "depth":
-                        # write function to save depth as torch tensor for later use
-                        depth = outputs["depth"].cpu()
-                        torch.save(depth, output_image_dir / f"{camera_idx:05d}_depth.png")
                 if output_format == "video":
                     if writer is None:
                         render_width = int(render_image.shape[1])
@@ -520,12 +519,145 @@ class SpiralRender(BaseRender):
             colormap_options=self.colormap_options,
         )
 
+# ------------------------------ Added functionality ------------------------------
+def _render_depth_maps(
+    pipeline: Pipeline,
+    cameras: Cameras,
+    imgs_names: List[Path],
+    output_directory: Path,
+) -> None:
+    """Helper function to render depthmaps for given cameras and save them as pt tensor.
+       This is a modified version of nerfstudio.scripts.render._render_trajectory_video().
+
+    Args:
+        pipeline: Pipeline to evaluate with.
+        cameras: Cameras to render.
+        imgs_names: Names of the images corresponding to the cameras.
+        output_directory: Output directory of depthmaps.
+    """
+    cameras = cameras.to(pipeline.device)
+
+    progress = Progress(
+        TextColumn(":movie_camera: Rendering :movie_camera:"),
+        BarColumn(),
+        TaskProgressColumn(
+            text_format="[progress.percentage]{task.completed}/{task.total:>.0f}({task.percentage:>3.1f}%)",
+            show_speed=True,
+        ),
+        ItersPerSecColumn(suffix="fps"),
+        TimeRemainingColumn(elapsed_when_finished=False, compact=False),
+        TimeElapsedColumn(),
+    )
+
+    # create output directory
+    output_dir = output_directory.parent / output_directory.stem
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    with ExitStack() as stack:
+        writer = None
+
+        with progress:
+            for camera_idx in progress.track(range(cameras.size), description=""):
+                aabb_box = None
+                camera_ray_bundle = cameras.generate_rays(camera_indices=camera_idx, aabb_box=aabb_box)
+                with torch.no_grad():
+                    outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle)
+
+                # save depthmap as torch tensor
+                depth = outputs["depth"].cpu()
+                torch.save(depth, output_dir / f"{imgs_names[camera_idx].stem}_depth.pt")
+                
+
+    table = Table(
+        title=None,
+        show_header=False,
+        box=box.MINIMAL,
+        title_style=style.Style(bold=True),
+    )
+    table.add_row("Depthmaps", str(output_dir))
+    CONSOLE.print(Panel(table, title="[bold][green]:tada: Render Complete :tada:[/bold]", expand=False))
+
+
+@dataclass
+class DepthRender(BaseRender):
+    """Render learned depthmaps for all eval and train images."""
+
+    def main(self) -> None:
+        """Main function."""
+        _, pipeline, _, _ = eval_setup(
+            self.load_config,
+            eval_num_rays_per_chunk=self.eval_num_rays_per_chunk,
+            test_mode="test",
+        )
+
+        # check ffmpeg is installed
+        install_checks.check_ffmpeg_installed()
+
+        # check names of training and eval images
+        assert pipeline.datamanager.train_dataset is not None
+        assert pipeline.datamanager.eval_dataset is not None
+        # dataparser_outputs_train = pipeline.datamanager.dataparser.get_dataparser_outputs(split="train")
+
+
+        train_imgs_names = pipeline.datamanager.train_dataset._dataparser_outputs.image_filenames
+        eval_imgs_names = pipeline.datamanager.eval_dataset._dataparser_outputs.image_filenames
+
+        # print(f"Number of training images: {len(train_imgs_names)}")
+        # for i in range(len(train_imgs_names)):
+        #     print(train_imgs_names[i].stem)
+        # print(f"Number of eval images: {len(eval_imgs_names)}")
+
+        # render train_imgs depth maps
+        _render_depth_maps(
+            pipeline,
+            pipeline.datamanager.train_dataset.cameras,
+            train_imgs_names,
+            self.output_path,
+        )
+
+        _render_depth_maps(
+            pipeline,
+            pipeline.datamanager.eval_dataset.cameras,
+            eval_imgs_names,
+            self.output_path,
+        )
+
+
+        # if self.pose_source == "eval":
+        #     assert pipeline.datamanager.eval_dataset is not None
+        #     cameras = pipeline.datamanager.eval_dataset.cameras
+        # else:
+        #     assert pipeline.datamanager.train_dataset is not None
+        #     cameras = pipeline.datamanager.train_dataset.cameras
+
+        # seconds = self.interpolation_steps * len(cameras) / self.frame_rate
+        # camera_path = get_interpolated_camera_path(
+        #     cameras=cameras,
+        #     steps=self.interpolation_steps,
+        #     order_poses=self.order_poses,
+        # )
+
+        # _render_trajectory_video(
+        #     pipeline,
+        #     camera_path,
+        #     output_filename=self.output_path,
+        #     rendered_output_names=self.rendered_output_names,
+        #     rendered_resolution_scaling_factor=1.0 / self.downscale_factor,
+        #     seconds=seconds,
+        #     output_format=self.output_format,
+        #     image_format=self.image_format,
+        #     colormap_options=self.colormap_options,
+        # )
+
+
+# ------------------------------ Added functionality end ------------------------------
 
 Commands = tyro.conf.FlagConversionOff[
     Union[
         Annotated[RenderCameraPath, tyro.conf.subcommand(name="camera-path")],
         Annotated[RenderInterpolated, tyro.conf.subcommand(name="interpolate")],
         Annotated[SpiralRender, tyro.conf.subcommand(name="spiral")],
+        Annotated[DepthRender, tyro.conf.subcommand(name="depthmaps")] # add custom depth renderer to CLI interface
     ]
 ]
 
