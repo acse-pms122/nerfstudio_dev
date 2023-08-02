@@ -475,7 +475,7 @@ class Trainer:
                 loss /= self.gradient_accumulation_steps
             self.grad_scaler.scale(loss).backward()  # type: ignore
             # added here because we need it after the backward pass
-            print_network_parameters(self.pipeline._model)
+            print_network_parameters(self.pipeline.model)
         self.optimizers.optimizer_scaler_step_all(self.grad_scaler)
 
         if self.config.log_gradients:
@@ -544,7 +544,7 @@ class Trainer:
 
 def print_network_parameters(model):
     print('-----------------------Field-----------------------')
-    for name, param in model.field.named_parameters():
+    for name, param in model.named_parameters():
         if param.requires_grad and param.numel() > 0: # Check that parameter has elements
             print(f"Parameter {name}: Max: {param.max().item():.5g}, Min: {param.min().item():.5g}, Mean: {param.mean().item():.5g}, Std: {param.std().item():.5g}")
             if param.grad is not None:
@@ -554,7 +554,7 @@ def print_network_parameters(model):
         else:
             print(f"Parameter {name} has no elements")
     print('-----------------------Proposal Network-----------------------')
-    for name, param in model.field.named_parameters():
+    for name, param in model.named_parameters():
         if param.requires_grad and param.numel() > 0: # Check that parameter has elements
             print(f"Parameter {name}: Max: {param.max().item():.5g}, Min: {param.min().item():.5g}, Mean: {param.mean().item():.5g}, Std: {param.std().item():.5g}")
             if param.grad is not None:
