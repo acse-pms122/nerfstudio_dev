@@ -474,6 +474,8 @@ class Trainer:
                 loss = functools.reduce(torch.add, loss_dict.values())
                 loss /= self.gradient_accumulation_steps
             self.grad_scaler.scale(loss).backward()  # type: ignore
+            # added here because we need it after the backward pass
+            print_network_parameters(self.pipeline._model)
         self.optimizers.optimizer_scaler_step_all(self.grad_scaler)
 
         if self.config.log_gradients:
@@ -531,3 +533,26 @@ class Trainer:
         if step_check(step, self.config.steps_per_eval_all_images):
             metrics_dict = self.pipeline.get_average_eval_image_metrics(step=step)
             writer.put_dict(name="Eval Images Metrics Dict (all images)", scalar_dict=metrics_dict, step=step)
+
+
+def print_network_parameters(model):
+    print('-----------------------Field-----------------------')
+    for name, param in model.field.named_parameters():
+        if param.requires_grad and param.numel() > 0: # Check that parameter has elements
+            print(f"Parameter {name}: Max: {param.max().item():.5g}, Min: {param.min().item():.5g}, Mean: {param.mean().item():.5g}, Std: {param.std().item():.5g}")
+            if param.grad is not None:
+                print(f"Gradient of {name}: Max: {param.grad.data.max().item():.5g}, Min: {param.grad.data.min().item():.5g}, Mean: {param.grad.data.mean().item():.5g}, Std: {param.grad.data.std().item():.5g}")
+            else:
+                print(f"Gradient of {name} is None")
+        else:
+            print(f"Parameter {name} has no elements")
+    print('-----------------------Proposal Network-----------------------')
+    for name, param in model.field.named_parameters():
+        if param.requires_grad and param.numel() > 0: # Check that parameter has elements
+            print(f"Parameter {name}: Max: {param.max().item():.5g}, Min: {param.min().item():.5g}, Mean: {param.mean().item():.5g}, Std: {param.std().item():.5g}")
+            if param.grad is not None:
+                print(f"Gradient of {name}: Max: {param.grad.data.max().item():.5g}, Min: {param.grad.data.min().item():.5g}, Mean: {param.grad.data.mean().item():.5g}, Std: {param.grad.data.std().item():.5g}")
+            else:
+                print(f"Gradient of {name} is None")
+        else:
+            print(f"Parameter {name} has no elements")
