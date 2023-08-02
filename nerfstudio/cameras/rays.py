@@ -25,6 +25,8 @@ from torch import Tensor
 
 from nerfstudio.utils.math import Gaussians, conical_frustum_to_gaussian
 from nerfstudio.utils.tensor_dataclass import TensorDataclass
+#added
+from nerfstudio.field_components.activations import trunc_exp
 
 TORCH_DEVICE = Union[str, torch.device]
 
@@ -136,13 +138,13 @@ class RaySamples(TensorDataclass):
         """
 
         delta_density = self.deltas * densities
-        alphas = 1 - torch.exp(-delta_density)
+        alphas = 1 - trunc_exp(-delta_density)
 
         transmittance = torch.cumsum(delta_density[..., :-1, :], dim=-2)
         transmittance = torch.cat(
             [torch.zeros((*transmittance.shape[:1], 1, 1), device=densities.device), transmittance], dim=-2
         )
-        transmittance = torch.exp(-transmittance)  # [..., "num_samples"]
+        transmittance = trunc_exp(-transmittance)  # [..., "num_samples"]
 
         weights = alphas * transmittance  # [..., "num_samples"]
         weights = torch.nan_to_num(weights)
