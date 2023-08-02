@@ -486,6 +486,13 @@ class Trainer:
                     grad = value.grad.norm()
                     metrics_dict[f"Gradients/{tag}"] = grad  # type: ignore
                     total_grad += grad
+                    #added
+                    if value.numel() > 0:
+                        grad_max = value.grad.max()
+                        grad_min = value.grad.min()
+                        metrics_dict[f"Gradients_max/{tag}_max"] = grad_max  # type: ignore
+                        metrics_dict[f"Gradients_max/{tag}_min"] = grad_min  # type: ignore
+
 
             metrics_dict["Gradients/Total"] = cast(torch.Tensor, total_grad)  # type: ignore
 
