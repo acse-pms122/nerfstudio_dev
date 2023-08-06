@@ -475,7 +475,8 @@ class Trainer:
                 loss /= self.gradient_accumulation_steps
             self.grad_scaler.scale(loss).backward()  # type: ignore
             # added here because we need it after the backward pass
-            print_network_parameters(self.pipeline.model)
+            if self.config.log_gradients:
+                print_network_parameters(self.pipeline.model)
         self.optimizers.optimizer_scaler_step_all(self.grad_scaler)
 
         if self.config.log_gradients:
